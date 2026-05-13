@@ -34,7 +34,8 @@ class RegisterRequest(BaseModel):
 
     email: EmailStr
     username: Annotated[str, Field(min_length=3, max_length=30)]
-    password: Annotated[str, Field(min_length=10, max_length=128)]
+    # PRD §17.2 ile uyumlu min uzunluk; UX talebi gereği 6 karaktere indirildi.
+    password: Annotated[str, Field(min_length=6, max_length=128)]
     display_name: Annotated[str | None, Field(default=None, max_length=120)] = None
     birth_date: date
     kvkk_consent: bool = Field(
@@ -107,3 +108,36 @@ class TokenPair(BaseModel):
     token_type: str = "bearer"
     access_token_expires_at: datetime
     refresh_token_expires_at: datetime
+
+
+class RegisterResponse(BaseModel):
+    """Yeni kayıt akışı — e-posta doğrulama bekleniyor.
+
+    PRD §17.3 uyumlu e-posta doğrulama (email verification) zorunluluğu:
+    kullanıcı kaydolduktan sonra hemen oturum açamaz; bir doğrulama
+    bağlantısı tıklayarak ``email_verified_at`` alanını doldurması gerekir.
+
+    Üretimde ``verification_token`` istemciye **gönderilmez**, bunun yerine
+    kullanıcıya e-posta ile iletilir. Bu MVP'de SMTP altyapısı olmadığından
+    token doğrudan response'a eklenir; istemci ``/dogrula?token=...``
+    sayfasına yönlendirir.
+    """
+
+    message: str
+    email: EmailStr
+    user_id: str
+    verification_token: str
+    verification_url: str
+    expires_at: datetime
+
+
+class EmailVerificationRequest(BaseModel):
+    """``POST /v1/auth/verify-email`` payload'ı."""
+
+    token: Annotated[str, Field(min_length=10, max_length=4096)]
+
+
+class ResendVerificationRequest(BaseModel):
+    """``POST /v1/auth/resend-verification`` payload'ı."""
+
+    email: EmailStr

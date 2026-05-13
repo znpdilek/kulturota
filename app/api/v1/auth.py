@@ -21,10 +21,13 @@ from app.api.deps import DbSession
 from app.api.rate_limit import rate_limit
 from app.core.config import settings
 from app.schemas.auth import (
+    EmailVerificationRequest,
     LoginRequest,
     LogoutRequest,
     RefreshRequest,
     RegisterRequest,
+    RegisterResponse,
+    ResendVerificationRequest,
     TokenPair,
 )
 from app.services import auth_service
@@ -36,12 +39,14 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post(
     "/register",
-    response_model=TokenPair,
+    response_model=RegisterResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Yeni kullanıcı kaydı (18+ + KVKK)",
+    summary="Yeni kullanıcı kaydı (18+ + KVKK + e-posta doğrulama)",
     description=(
         "PRD §17.3 / D3: 18 yaş kontrolü hem uygulama (Pydantic) hem de DB "
-        "(CHECK constraint) seviyesinde yapılır. KVKK açık rıza zorunludur."
+        "(CHECK constraint) seviyesinde yapılır. KVKK açık rıza zorunludur.\n\n"
+        "Bu uç doğrudan oturum açmaz; kullanıcıya bir doğrulama bağlantısı "
+        "iletir. Oturum açmak için `POST /v1/auth/verify-email` çağrılmalıdır."
     ),
     dependencies=[Depends(rate_limit("auth.register", limit=AUTH_LIMIT))],
 )
@@ -49,9 +54,47 @@ def register(
     payload: RegisterRequest,
     db: DbSession,
     request: Request,
+) -> RegisterResponse:
+    _, response = auth_service.register_user(db, payload, request=request)
+    return response
+
+
+@router.post(
+    "/verify-email",
+    response_model=TokenPair,
+    summary="E-posta doğrulama (ilk oturum açma)",
+    description=(
+        "Kayıt sırasında oluşturulan doğrulama token'ını işler ve "
+        "kullanıcıya ilk access + refresh çiftini verir. Token tek "
+        "kullanımlık ve 24 saat geçerlidir."
+    ),
+    dependencies=[Depends(rate_limit("auth.verify_email", limit=AUTH_LIMIT))],
+)
+def verify_email(
+    payload: EmailVerificationRequest,
+    db: DbSession,
+    request: Request,
 ) -> TokenPair:
-    _, tokens = auth_service.register_user(db, payload, request=request)
+    _, tokens = auth_service.verify_email(db, payload.token, request=request)
     return tokens
+
+
+@router.post(
+    "/resend-verification",
+    response_model=RegisterResponse,
+    summary="Doğrulama bağlantısını yeniden gönder",
+    description=(
+        "Geçerli e-posta adresine yeni bir doğrulama bağlantısı üretir. "
+        "Account enumeration koruması nedeniyle e-posta sistemde olsa da "
+        "olmasa da aynı yanıt döner."
+    ),
+    dependencies=[Depends(rate_limit("auth.resend_verification", limit=AUTH_LIMIT))],
+)
+def resend_verification(
+    payload: ResendVerificationRequest,
+    db: DbSession,
+) -> RegisterResponse:
+    return auth_service.resend_verification(db, payload.email)
 
 
 @router.post(

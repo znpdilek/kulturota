@@ -27,9 +27,11 @@ from sqlalchemy.orm import Session
 
 from app.core.enums import TokenType, UserRole
 from app.core.exceptions import ProblemDetailsError
+from app.core.config import settings
 from app.core.security import (
     TokenError,
     create_access_token,
+    create_email_verification_token,
     create_refresh_token,
     decode_token,
     hash_password,
@@ -37,7 +39,12 @@ from app.core.security import (
 )
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenPair
+from app.schemas.auth import (
+    LoginRequest,
+    RegisterRequest,
+    RegisterResponse,
+    TokenPair,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,13 +104,23 @@ def _mint_token_pair(
 
 
 # --- Public API ------------------------------------------------------------
+def _build_verification_url(token: str) -> str:
+    """Doğrulama bağlantısını ilk CORS origini üzerinden kur (dev için)."""
+    base = (settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "http://localhost:5173").rstrip("/")
+    return f"{base}/dogrula?token={token}"
+
+
 def register_user(
     db: Session,
     payload: RegisterRequest,
     *,
     request: Request | None = None,
-) -> tuple[User, TokenPair]:
-    """Yeni kullanıcı oluştur ve ilk token çiftini ver.
+) -> tuple[User, RegisterResponse]:
+    """Yeni kullanıcı oluştur — e-posta doğrulama bekleyen ``pending`` durumda.
+
+    PRD §17.3 uyarınca kayıt akışı doğrudan oturum açmaz. ``email_verified_at``
+    NULL olarak başlar; kullanıcı doğrulama bağlantısını tıkladığında
+    :func:`verify_email` ilk token çiftini üretir.
 
     DB tarafında ``birth_date <= CURRENT_DATE - INTERVAL '18 years'`` CHECK
     constraint'i ikinci savunma hattıdır (PRD §17.3 / D3).
@@ -117,6 +134,8 @@ def register_user(
         kvkk_consent_at=datetime.now(tz=timezone.utc),
         locale=payload.locale,
         role=UserRole.USER,
+        # PRD §17.3 — kayıt direkt aktif olmaz; doğrulama bekler.
+        email_verified_at=None,
     )
     db.add(user)
     try:
@@ -130,6 +149,7 @@ def register_user(
                 title="Conflict",
                 detail="Bu e-posta adresi zaten kayıtlı.",
                 code="auth.email_taken",
+                extras={"field": "email"},
             ) from exc
         if "users_username" in msg or "ix_users_username" in msg:
             raise ProblemDetailsError(
@@ -137,6 +157,7 @@ def register_user(
                 title="Conflict",
                 detail="Bu kullanıcı adı zaten alınmış.",
                 code="auth.username_taken",
+                extras={"field": "username"},
             ) from exc
         if "adult_birth_date" in msg or "ck_users" in msg:
             raise ProblemDetailsError(
@@ -144,6 +165,7 @@ def register_user(
                 title="Unprocessable Entity",
                 detail="Yalnızca 18 yaş ve üzeri kayıt olabilir (PRD §17.3 / D3).",
                 code="auth.underage",
+                extras={"field": "birth_date"},
             ) from exc
         logger.exception("kayıt sırasında beklenmeyen integrity hatası")
         raise ProblemDetailsError(
@@ -153,11 +175,105 @@ def register_user(
             code="auth.register_failed",
         ) from exc
 
+    verify_token, _verify_jti, verify_exp = create_email_verification_token(
+        subject=user.id, role=user.role
+    )
+    db.commit()
+    db.refresh(user)
+
+    response = RegisterResponse(
+        message=(
+            "Kaydınız oluşturuldu. Lütfen e-posta adresinize gönderilen "
+            "doğrulama bağlantısına tıklayarak hesabınızı aktif edin."
+        ),
+        email=user.email,
+        user_id=str(user.id),
+        verification_token=verify_token,
+        verification_url=_build_verification_url(verify_token),
+        expires_at=verify_exp,
+    )
+    return user, response
+
+
+def verify_email(
+    db: Session,
+    token: str,
+    *,
+    request: Request | None = None,
+) -> tuple[User, TokenPair]:
+    """E-posta doğrulama: token'ı tüket, ``email_verified_at`` doldur ve
+    ilk token çiftini ver."""
+    try:
+        claims = decode_token(token, expected_type=TokenType.EMAIL_VERIFY)
+    except TokenError as exc:
+        raise ProblemDetailsError(
+            status=400,
+            title="Bad Request",
+            detail=(
+                "Doğrulama bağlantısı geçersiz veya süresi dolmuş. "
+                "Yeniden doğrulama isteği oluşturun."
+            ),
+            code="auth.invalid_verification",
+        ) from exc
+
+    try:
+        user_id = uuid.UUID(claims["sub"])
+    except (KeyError, ValueError) as exc:
+        raise ProblemDetailsError(
+            status=400,
+            title="Bad Request",
+            detail="Doğrulama token'ı eksik veya bozuk.",
+            code="auth.invalid_verification",
+        ) from exc
+
+    user = db.get(User, user_id)
+    if user is None:
+        raise ProblemDetailsError(
+            status=404,
+            title="Not Found",
+            detail="Kullanıcı bulunamadı.",
+            code="auth.user_not_found",
+        )
+
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.now(tz=timezone.utc)
+
     tokens = _mint_token_pair(db, user, request=request)
     user.last_login_at = datetime.now(tz=timezone.utc)
     db.commit()
     db.refresh(user)
     return user, tokens
+
+
+def resend_verification(db: Session, email: str) -> RegisterResponse:
+    """Doğrulama bağlantısını tekrar oluştur. Güvenlik notu: e-posta var olsa
+    da olmasa da aynı mesajı döneriz (account enumeration koruması)."""
+    user = db.scalar(select(User).where(User.email == email.lower()))
+    generic_message = (
+        "Eğer bu e-posta sistemde kayıtlı ve henüz doğrulanmamışsa, yeni "
+        "doğrulama bağlantısı oluşturuldu."
+    )
+    if user is None or user.email_verified_at is not None:
+        return RegisterResponse(
+            message=generic_message,
+            email=email.lower(),
+            user_id="",
+            verification_token="",
+            verification_url="",
+            expires_at=datetime.now(tz=timezone.utc),
+        )
+
+    verify_token, _jti, verify_exp = create_email_verification_token(
+        subject=user.id, role=user.role
+    )
+    return RegisterResponse(
+        message=generic_message,
+        email=user.email,
+        user_id=str(user.id),
+        verification_token=verify_token,
+        verification_url=_build_verification_url(verify_token),
+        expires_at=verify_exp,
+    )
 
 
 def login_user(
@@ -173,14 +289,25 @@ def login_user(
     )
     user = db.scalar(stmt)
 
-    if user is None or not user.password_hash or not verify_password(
+    if user is None:
+        # Account enumeration koruması: kullanıcı yok ile şifre yanlış aynı kod.
+        raise ProblemDetailsError(
+            status=401,
+            title="Unauthorized",
+            detail="Böyle bir kullanıcı bulunamadı veya şifre hatalı.",
+            code="auth.invalid_credentials",
+            extras={"field": "identifier"},
+        )
+
+    if not user.password_hash or not verify_password(
         payload.password, user.password_hash
     ):
         raise ProblemDetailsError(
             status=401,
             title="Unauthorized",
-            detail="E-posta/kullanıcı adı veya şifre hatalı.",
-            code="auth.invalid_credentials",
+            detail="Girdiğiniz şifre hatalı. Lütfen yeniden deneyin.",
+            code="auth.invalid_password",
+            extras={"field": "password"},
         )
 
     if not user.is_active:
@@ -189,6 +316,19 @@ def login_user(
             title="Forbidden",
             detail="Hesabınız askıya alınmış.",
             code="auth.inactive",
+        )
+
+    # PRD §17.3 — e-posta doğrulanmadan oturum açılamaz.
+    if user.email_verified_at is None:
+        raise ProblemDetailsError(
+            status=403,
+            title="Forbidden",
+            detail=(
+                "E-posta adresiniz henüz doğrulanmadı. Lütfen kayıt sırasında "
+                "size gönderilen doğrulama bağlantısına tıklayın."
+            ),
+            code="auth.email_not_verified",
+            extras={"email": user.email},
         )
 
     tokens = _mint_token_pair(db, user, request=request)

@@ -31,8 +31,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.user import UserPublic
 
-# PRD §10.2: ``body`` Text kolonu. UX için 5–2000 karakter aralığı uygulanır.
-_BODY_MIN = 5
+# PRD §10.2: ``body`` Text kolonu. UX talebi gereği kısa yorumlara da izin
+# verilir (örn. "Harika!"); minimum 1, maksimum 2000 karakter.
+_BODY_MIN = 1
 _BODY_MAX = 2_000
 
 
@@ -84,8 +85,6 @@ class ReviewCreate(BaseModel):
         stripped = value.strip()
         if not stripped:
             return None
-        if len(stripped) < _BODY_MIN:
-            raise ValueError(f"Yorum en az {_BODY_MIN} karakter olmalı.")
         return stripped
 
     @field_validator("visited_at")

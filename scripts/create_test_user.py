@@ -53,8 +53,21 @@ with httpx.Client(base_url=BASE, timeout=15.0) as cli:
     print(f"\n→ HTTP {r.status_code}")
     if r.status_code != 201:
         sys.exit(f"Beklenmeyen yanıt: {r.text}")
+    register_payload = r.json()
+    print("Response: doğrulama bağlantısı üretildi (kayıt pending durumda)")
+    print(f"  email             : {register_payload['email']}")
+    print(f"  verification_url  : {register_payload['verification_url']}")
+
+    # ── 1b. VERIFY EMAIL ───────────────────────────────────────────────
+    step("1b) POST /v1/auth/verify-email — e-postayı doğrula")
+    r = cli.post(
+        "/auth/verify-email",
+        json={"token": register_payload["verification_token"]},
+    )
+    print(f"→ HTTP {r.status_code}")
+    if r.status_code != 200:
+        sys.exit(f"Doğrulama başarısız: {r.text}")
     tokens = r.json()
-    print("Response: access_token + refresh_token üretildi")
     print(
         f"  access_token_expires_at  : {tokens['access_token_expires_at']}"
     )

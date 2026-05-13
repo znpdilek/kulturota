@@ -68,8 +68,20 @@ def main() -> int:
         )
         print(f"-> {r.status_code}")
         assert r.status_code == 201, f"Beklenen 201, gelen {r.status_code}: {r.text}"
+        register_response = r.json()
+        print(pretty({
+            "email": register_response["email"],
+            "verification_url": register_response["verification_url"],
+        }))
+
+        # 1b. VERIFY EMAIL — token tüketildiğinde token çifti üretilir.
+        banner("1b) POST /v1/auth/verify-email")
+        r = client.post(
+            "/auth/verify-email",
+            json={"token": register_response["verification_token"]},
+        )
+        assert r.status_code == 200, f"Verify başarısız: {r.text}"
         tokens = r.json()
-        print(pretty({k: v if k.startswith("access") or k.startswith("refresh") else v for k, v in tokens.items() if not k.endswith("token")}))
         access = tokens["access_token"]
         refresh = tokens["refresh_token"]
         print(f"access_token (ilk 40): {access[:40]}…")

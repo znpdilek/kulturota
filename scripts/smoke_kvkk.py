@@ -127,9 +127,16 @@ def main() -> int:
             },
         )
         assert r.status_code == 201, f"register: {r.status_code} {r.text}"
+        register_body = r.json()
+        # PRD §17.3 — e-posta doğrulama akışı zorunlu.
+        r = client.post(
+            "/auth/verify-email",
+            json={"token": register_body["verification_token"]},
+        )
+        assert r.status_code == 200, f"verify-email: {r.status_code} {r.text}"
         tokens = r.json()
         access = tokens["access_token"]
-        print(f"-> 201  access[…]={access[:30]}")
+        print(f"-> 201 + verify  access[…]={access[:30]}")
 
         auth = {"Authorization": f"Bearer {access}"}
 

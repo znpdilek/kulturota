@@ -79,7 +79,10 @@ def register_user(client: httpx.Client, prefix: str) -> tuple[str, str]:
     r = client.post("/auth/register", json=payload)
     assert r.status_code == 201, f"register başarısız: {r.status_code} {r.text}"
     body = r.json()
-    return body["access_token"], body["refresh_token"]
+    r = client.post("/auth/verify-email", json={"token": body["verification_token"]})
+    assert r.status_code == 200, f"verify-email başarısız: {r.status_code} {r.text}"
+    tokens = r.json()
+    return tokens["access_token"], tokens["refresh_token"]
 
 
 def pick_two_published_places(client: httpx.Client) -> tuple[dict, dict]:

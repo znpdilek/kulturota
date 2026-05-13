@@ -18,17 +18,20 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.api.rate_limit import rate_limit
 from app.core.config import settings
-from app.schemas.photo import PhotoUploadResponse
+from app.schemas.photo import PhotoListResponse, PhotoUploadResponse
 from app.services import media_service
 
 AUTH_LIMIT = settings.RATE_LIMIT_AUTH_PER_MIN
+PUBLIC_LIMIT = settings.RATE_LIMIT_PUBLIC_PER_MIN
 
 router = APIRouter(prefix="/photos", tags=["photos"])
+# Mekana ait foto galerisi `/places/{id}/photos` altında public okuma sunar.
+places_photos_router = APIRouter(prefix="/places", tags=["photos"])
 
 
 @router.post(
@@ -86,4 +89,25 @@ async def upload_photo(
         await file.close()
 
 
-__all__ = ["router", "upload_photo"]
+@places_photos_router.get(
+    "/{place_id}/photos",
+    response_model=PhotoListResponse,
+    summary="Mekanın foto galerisini getir",
+    description=(
+        "Yalnızca yayınlanmış (``is_approved=true``) kayıtları döner. "
+        "MVP'de tüm fotoğraflar otomatik yayınlanır; editör onayı yoktur."
+    ),
+    dependencies=[Depends(rate_limit("photos.list", limit=PUBLIC_LIMIT))],
+)
+def list_photos(
+    place_id: uuid.UUID,
+    db: DbSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> PhotoListResponse:
+    return media_service.list_photos(
+        db, place_id=place_id, limit=limit, offset=offset
+    )
+
+
+__all__ = ["router", "places_photos_router", "upload_photo"]

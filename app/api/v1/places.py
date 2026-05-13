@@ -31,8 +31,10 @@ PUBLIC_LIMIT = settings.RATE_LIMIT_PUBLIC_PER_MIN
 router = APIRouter(prefix="/places", tags=["places"])
 
 # Sayfa boyutu sınırları — PRD §12.1: cursor-based ileride genişletilecek.
-_LIMIT_DEFAULT = 20
-_LIMIT_MAX = 100
+# `_LIMIT_MAX` Keşfet panelindeki "Tümü" akışı için 500 noktaya çıkarıldı;
+# bu sınır harita render performansını koruyacak şekilde belirlendi.
+_LIMIT_DEFAULT = 100
+_LIMIT_MAX = 500
 
 
 def _parse_bbox(raw: str | None) -> tuple[float, float, float, float] | None:

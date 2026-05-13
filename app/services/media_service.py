@@ -26,7 +26,7 @@ import logging
 import uuid
 from typing import Final
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ProblemDetailsError
@@ -34,7 +34,11 @@ from app.models.photo import Photo
 from app.models.place import Place
 from app.models.route import Route
 from app.models.user import User
-from app.schemas.photo import PhotoUploadResponse
+from app.schemas.photo import (
+    PhotoListItem,
+    PhotoListResponse,
+    PhotoUploadResponse,
+)
 from app.services.exif_service import SanitizedImage, sanitize_image
 from app.services.storage_service import StorageService, get_storage_service
 
@@ -113,21 +117,23 @@ def upload_photo(
     )
 
     # --- 5) DB satırı (PRD §10.2 photos) ----------------------------------
-    # PRD F3: NSFW + perceptual hash adımı sonraki moderasyon servisinde
-    # yapılır → ``is_approved=False`` bilinçli varsayılandır.
+    # MVP'de editör paneli mevcut değil; kullanıcı talebi gereği fotoğraflar
+    # ``is_approved=True`` ile anında yayınlanır. PRD F3'te tanımlı NSFW
+    # moderasyon hattı tekrar devreye alındığında bu varsayılan otomatik
+    # ``False`` olarak güncellenmelidir.
     photo = Photo(
         id=photo_uuid,
         place_id=place_id,
         user_id=user.id,
         route_id=route_id,
         url=public_url,
-        thumb_url=public_url,  # MVP: thumbnail pipeline'ı ileri adımda.
+        thumb_url=public_url,
         width=sanitized.width,
         height=sanitized.height,
         taken_at=sanitized.taken_at,
         exif=sanitized.exif_sanitized or None,
         license="CC BY-NC 4.0",
-        is_approved=False,
+        is_approved=True,
     )
 
     db.add(photo)
@@ -161,6 +167,38 @@ def upload_photo(
         taken_at=photo.taken_at,
         created_at=photo.created_at,
         exif_had_gps=sanitized.gps is not None,
+    )
+
+
+def list_photos(
+    db: Session,
+    *,
+    place_id: uuid.UUID,
+    limit: int,
+    offset: int,
+) -> PhotoListResponse:
+    """Mekana yüklenmiş yayınlanmış fotoğrafları sayfalı şekilde döndür."""
+    _get_published_place(db, place_id)
+
+    filters = [Photo.place_id == place_id, Photo.is_approved.is_(True)]
+    total = db.scalar(
+        select(func.count(Photo.id)).where(*filters)
+    ) or 0
+
+    rows = db.scalars(
+        select(Photo)
+        .where(*filters)
+        .order_by(Photo.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    ).all()
+    items = [PhotoListItem.model_validate(p) for p in rows]
+    return PhotoListResponse(
+        items=items,
+        total=int(total),
+        limit=limit,
+        offset=offset,
+        has_more=(offset + len(items)) < int(total),
     )
 
 

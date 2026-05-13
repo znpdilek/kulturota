@@ -23,6 +23,8 @@ api_router.include_router(users_router.router)
 api_router.include_router(places_router.router)
 # Adım 6: POST /v1/photos (multipart) — S3/MinIO + EXIF temizleme + DB.
 api_router.include_router(photos_router.router)
+# GET /v1/places/{id}/photos — public foto galerisi.
+api_router.include_router(photos_router.places_photos_router)
 # Adım 7: /v1/routes + /v1/routes/{id}/stops — rota CRUD ve stop yönetimi.
 api_router.include_router(routes_router.router)
 # Adım 8: Sosyal MVP — /v1/places/{id}/reviews (yorum) +

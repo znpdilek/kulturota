@@ -16,6 +16,7 @@ soft-delete bayrağı).
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from typing import Iterable
 
@@ -37,6 +38,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.exceptions import ProblemDetailsError
 from app.models.place import Place
 from app.schemas.place import (
@@ -57,6 +59,106 @@ MAX_NEARBY_RADIUS_M = 50_000
 MAX_BBOX_DEGREES = 5.0
 
 
+# ---------------------------------------------------------------------------
+# Türkçe isim çözümleyici — PRD §8.4 ETL `name:tr` boş kaldığında uygulama
+# katmanında küçük bir terim haritası ile fallback uygular. Bu sayede ETL
+# yeniden çalıştırılmadan da Keşfet panelinde Türkçe etiketler görünür.
+# ---------------------------------------------------------------------------
+_TR_TERM_MAP: dict[str, str] = {
+    "ancient city": "Antik Kenti",
+    "ancient theatre": "Antik Tiyatrosu",
+    "ancient theater": "Antik Tiyatrosu",
+    "archaeological site": "Arkeolojik Alanı",
+    "archaeological museum": "Arkeoloji Müzesi",
+    "museum": "Müzesi",
+    "mosque": "Camii",
+    "castle": "Kalesi",
+    "fortress": "Kalesi",
+    "tower": "Kulesi",
+    "bath": "Hamamı",
+    "baths": "Hamamı",
+    "library": "Kütüphanesi",
+    "fountain": "Çeşmesi",
+    "aqueduct": "Su Kemeri",
+    "church": "Kilisesi",
+    "basilica": "Bazilikası",
+    "synagogue": "Sinagogu",
+    "ruins": "Ören Yeri",
+    "agora": "Agorası",
+    "necropolis": "Nekropolü",
+    "theatre": "Tiyatrosu",
+    "theater": "Tiyatrosu",
+}
+
+_PROPER_NAME_MAP: dict[str, str] = {
+    "ephesus": "Efes",
+    "pergamon": "Bergama",
+    "pergamum": "Bergama",
+    "smyrna": "İzmir (Smyrna)",
+    "izmir": "İzmir",
+    "kadifekale": "Kadifekale",
+    "asclepion": "Asklepion",
+    "celsus library": "Celsus Kütüphanesi",
+    "house of the virgin mary": "Meryem Ana Evi",
+    "temple of artemis": "Artemis Tapınağı",
+    "agora of smyrna": "Smyrna Agorası",
+    "konak square": "Konak Meydanı",
+}
+
+
+def _translate_to_turkish(value: str | None) -> str | None:
+    """İngilizce isimden basit Türkçe karşılığı üretmeye çalış.
+
+    Tam eşleşme önce ``_PROPER_NAME_MAP`` üzerinden aranır; bulunamazsa
+    terim sözlüğü ile parça-replace uygulanır. Bu fonksiyon tam çevirmen
+    değildir; ETL boşluklarını kullanıcı dostu bir gösterimle örtmeyi
+    amaçlar.
+    """
+    if not value:
+        return value
+    lower = value.strip().lower()
+    if not lower:
+        return value
+    if lower in _PROPER_NAME_MAP:
+        return _PROPER_NAME_MAP[lower]
+    result = value
+    changed = False
+    for en, tr in _TR_TERM_MAP.items():
+        if en in lower:
+            pattern = re.compile(re.escape(en), re.IGNORECASE)
+            result = pattern.sub(tr, result)
+            changed = True
+    return result if changed else value
+
+
+def _resolve_isim(isim: dict[str, object] | None) -> dict[str, object]:
+    """``isim`` JSONB'ını Türkçe-öncelikli olarak normalize et."""
+    if not isim:
+        return {"tr": "İsimsiz Mekan"}
+    out = dict(isim)
+    tr = (out.get("tr") or "").strip() if isinstance(out.get("tr"), str) else None
+    en = (out.get("en") or "").strip() if isinstance(out.get("en"), str) else None
+
+    if not tr:
+        # En son çare: Türkçe için İngilizce ismi çevir
+        candidate = en or next(
+            (
+                str(v).strip()
+                for v in out.values()
+                if isinstance(v, str) and v.strip()
+            ),
+            None,
+        )
+        if candidate:
+            out["tr"] = _translate_to_turkish(candidate) or candidate
+    elif en and tr.lower() == en.lower():
+        # `tr` ve `en` aynı (ETL fallback'i): yine de çeviri dener.
+        translated = _translate_to_turkish(tr)
+        if translated and translated != tr:
+            out["tr"] = translated
+    return out
+
+
 # --- Helpers ---------------------------------------------------------------
 def _coord_of(place: Place) -> Coordinate:
     """``geography(Point)`` → ``Coordinate``."""
@@ -68,7 +170,7 @@ def _summary_of(place: Place) -> PlaceSummary:
     return PlaceSummary(
         id=place.id,
         slug=place.slug,
-        isim=place.isim,
+        isim=_resolve_isim(place.isim),
         kategori=list(place.kategori or []),
         koordinat=_coord_of(place),
         kapak_foto_url=place.kapak_foto_url,
@@ -89,7 +191,7 @@ def _detail_of(place: Place) -> PlaceDetail:
     return PlaceDetail(
         id=place.id,
         slug=place.slug,
-        isim=place.isim,
+        isim=_resolve_isim(place.isim),
         kategori=list(place.kategori or []),
         koordinat=_coord_of(place),
         bbox=bbox,
@@ -116,6 +218,43 @@ def _normalize_categories(categories: Iterable[str] | None) -> list[str]:
 
 
 # --- Public API ------------------------------------------------------------
+def _izmir_boundary_geom() -> object:
+    """İzmir simplified polygon → PostGIS geometry (SRID 4326)."""
+    return func.ST_GeomFromText(settings.IZMIR_BOUNDARY_WKT, 4326)
+
+
+def _dedupe_summaries(items: list[PlaceSummary]) -> list[PlaceSummary]:
+    """Aynı isim + ~yakın koordinatlı kayıtları teke indir.
+
+    ETL dedup adımı (PRD §8.5) eşik altı clusterları kaçırabilir; API
+    seviyesinde son bir savunma hattı uygulanır. Anahtar:
+    ``(slug-base, lat-3decimal, lng-3decimal)``.
+    """
+    seen: dict[tuple, PlaceSummary] = {}
+    for item in items:
+        # Türkçe ismi normalize et (boşluk + case)
+        name_tr = ""
+        if isinstance(item.isim, dict):
+            tr = item.isim.get("tr") or item.isim.get("en") or ""
+            name_tr = str(tr).strip().lower()
+        # Koordinat hassasiyeti ~110m (3 ondalık)
+        key = (
+            name_tr,
+            round(item.koordinat.lat, 3),
+            round(item.koordinat.lng, 3),
+        )
+        existing = seen.get(key)
+        if existing is None:
+            seen[key] = item
+            continue
+        # Tekrar: kalite skoru yüksek olanı tut.
+        existing_score = existing.kalite_skoru or 0.0
+        new_score = item.kalite_skoru or 0.0
+        if new_score > existing_score:
+            seen[key] = item
+    return list(seen.values())
+
+
 def list_places(
     db: Session,
     *,
@@ -125,6 +264,7 @@ def list_places(
     unesco: bool | None,
     limit: int,
     offset: int,
+    enforce_izmir: bool = True,
 ) -> PlaceListResponse:
     """Filtreli mekan listesi (PRD §12.2 — ``GET /v1/places``).
 
@@ -134,8 +274,11 @@ def list_places(
         q: İsim araması — ``isim->>'tr'`` veya ``isim->>'en'`` ILIKE.
         unesco: True ise sadece UNESCO Dünya Mirası.
         limit/offset: Sayfalama.
+        enforce_izmir: True ise İzmir il poligonu zorunlu uygulanır.
     """
     filters: list = [Place.is_published.is_(True)]
+
+    place_geom = cast(Place.koordinat, Geometry(srid=4326))
 
     if bbox is not None:
         min_lon, min_lat, max_lon, max_lat = bbox
@@ -146,10 +289,12 @@ def list_places(
                 detail=f"Bbox kenarı en fazla {MAX_BBOX_DEGREES}° olabilir.",
                 code="places.bbox_too_large",
             )
-        # geography → geometry cast; ST_MakeEnvelope SRID parametresi alır.
         envelope = ST_MakeEnvelope(min_lon, min_lat, max_lon, max_lat, 4326)
-        place_geom = cast(Place.koordinat, Geometry(srid=4326))
         filters.append(ST_Intersects(place_geom, envelope))
+
+    # PRD §8.4 + D1 — pilot şehir İzmir; tüm sorgular il sınırı içinde kalır.
+    if enforce_izmir:
+        filters.append(func.ST_Within(place_geom, _izmir_boundary_geom()))
 
     normalized_categories = _normalize_categories(categories)
     if normalized_categories:
@@ -182,7 +327,9 @@ def list_places(
         .limit(limit)
         .offset(offset)
     )
-    items = [_summary_of(p) for p in db.scalars(stmt).all()]
+    raw_items = [_summary_of(p) for p in db.scalars(stmt).all()]
+    # API seviyesinde tekilleştirme (ETL clustering eşiği altı kalanları yakalar)
+    items = _dedupe_summaries(raw_items)
 
     return PlaceListResponse(
         items=items,
@@ -241,9 +388,12 @@ def nearby_places(
         Geography(srid=4326),
     )
 
+    place_geom = cast(Place.koordinat, Geometry(srid=4326))
     filters: list = [
         Place.is_published.is_(True),
         ST_DWithin(Place.koordinat, origin, radius_m),
+        # PRD §8.4 + D1 — İzmir il sınırı dışı kalan koordinatlar sızmasın.
+        func.ST_Within(place_geom, _izmir_boundary_geom()),
     ]
     normalized_categories = _normalize_categories(categories)
     if normalized_categories:

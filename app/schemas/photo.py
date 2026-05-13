@@ -42,9 +42,8 @@ class PhotoUploadResponse(BaseModel):
     height: int | None = None
     license: str = Field(default="CC BY-NC 4.0", description="PRD §20.4 varsayılan.")
     is_approved: bool = Field(
-        default=False,
-        description="PRD F3 — Otomatik moderasyon (NSFW/duplicate) tamamlanana "
-        "kadar ``false``. Bu adımda manuel approve yoktur.",
+        default=True,
+        description="MVP'de editör paneli yoktur; fotoğraflar anında yayınlanır.",
     )
 
     taken_at: datetime | None = Field(
@@ -61,6 +60,33 @@ class PhotoUploadResponse(BaseModel):
         description="EXIF'te GPS verisi varsa True döner (KVKK: sunucuda "
         "temizlenir, DB'ye yazılmaz).",
     )
+
+
+class PhotoListItem(BaseModel):
+    """Mekanın foto galerisinde gösterilecek özet öğe."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    place_id: uuid.UUID
+    user_id: uuid.UUID
+    url: str
+    thumb_url: str | None
+    width: int | None
+    height: int | None
+    license: str
+    taken_at: datetime | None
+    created_at: datetime
+
+
+class PhotoListResponse(BaseModel):
+    """``GET /v1/places/{id}/photos`` cevap zarfı."""
+
+    items: list[PhotoListItem]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
 
 
 class PhotoUploadProblem(BaseModel):

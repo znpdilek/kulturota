@@ -119,6 +119,26 @@ def create_refresh_token(
     )
 
 
+def create_email_verification_token(
+    *,
+    subject: uuid.UUID | str,
+    role: UserRole,
+    expires_minutes: int = 60 * 24,
+) -> tuple[str, uuid.UUID, datetime]:
+    """E-posta doğrulama token'ı.
+
+    PRD §17.3 — Kayıt akışı sonrası kullanıcı bir doğrulama bağlantısı
+    tıklamadan sisteme giriş yapamaz. Token tek kullanımlıktır ve
+    varsayılan olarak 24 saat içinde geçerliliğini yitirir.
+    """
+    return _build_token(
+        subject=subject,
+        role=role,
+        token_type=TokenType.EMAIL_VERIFY,
+        expires_delta=timedelta(minutes=expires_minutes),
+    )
+
+
 def decode_token(token: str, *, expected_type: TokenType) -> dict[str, Any]:
     """JWT'yi RS256 + audience + issuer doğrulamasıyla parse et.
 

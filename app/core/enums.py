@@ -22,10 +22,11 @@ class UserRole(str, enum.Enum):
 
 # --- AUTH (PRD §12.1 + §17.2) ------------------------------------------------
 class TokenType(str, enum.Enum):
-    """JWT ``typ`` claim'i — access ve refresh token'lar ayrı doğrulanır."""
+    """JWT ``typ`` claim'i — access, refresh ve email_verify token'lar ayrı doğrulanır."""
 
     ACCESS = "access"
     REFRESH = "refresh"
+    EMAIL_VERIFY = "email_verify"
 
 
 # --- ROUTES ------------------------------------------------------------------

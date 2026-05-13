@@ -44,10 +44,24 @@ class Settings(BaseSettings):
     REDIS_PASSWORD: str | None = None
 
     # --- Pilot Bbox (PRD D1: İzmir) -----------------------------------------
-    PILOT_BBOX_MIN_LON: float = 26.0
-    PILOT_BBOX_MIN_LAT: float = 38.0
-    PILOT_BBOX_MAX_LON: float = 28.5
-    PILOT_BBOX_MAX_LAT: float = 39.0
+    # Sıkı bbox: yalnızca İzmir ili koordinatlarını kapsar (kuzeyde Akhisar
+    # gibi Manisa şehirlerini hariç tutmak için ince ayar yapılmıştır).
+    PILOT_BBOX_MIN_LON: float = 26.10
+    PILOT_BBOX_MIN_LAT: float = 37.78
+    PILOT_BBOX_MAX_LON: float = 28.42
+    PILOT_BBOX_MAX_LAT: float = 39.18
+
+    # PRD §8.4 + D1 — İzmir il sınırlarına yaklaşık olan basitleştirilmiş
+    # poligon (WGS84). Manisa il sınırına yapışan kuzey-doğu çıkıntılarını
+    # (Akhisar/Soma vb.) açıkça dışarıda bırakır. ``ST_Within`` ile API
+    # seviyesinde uygulanır (bkz. ``app.services.place_service``).
+    IZMIR_BOUNDARY_WKT: str = (
+        "POLYGON(("
+        "26.93 39.18, 27.55 39.10, 27.55 38.55, 28.30 38.50, 28.40 38.10, "
+        "28.10 37.85, 27.55 37.80, 27.20 37.95, 26.85 38.20, 26.30 38.30, "
+        "26.18 38.45, 26.50 38.70, 26.80 38.95, 26.93 39.18"
+        "))"
+    )
 
     # --- KVKK (PRD D3) -------------------------------------------------------
     MIN_REGISTRATION_AGE_YEARS: int = 18

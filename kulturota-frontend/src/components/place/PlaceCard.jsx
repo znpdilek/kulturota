@@ -20,10 +20,10 @@ const PlaceCard = ({ place }) => {
     <div className="bg-white p-3 rounded-card shadow-card hover:shadow-card-hover transition-all mb-4 border border-stone-100 cursor-pointer flex gap-4 group">
       {/* Kapak Fotoğrafı */}
       <div className="w-24 h-24 rounded-lg bg-stone-200 overflow-hidden shrink-0 relative">
-        {place.image_url || place.fotograf || place.gorsel ? (
-          <img 
-            src={place.image_url || place.fotograf || place.gorsel} 
-            alt={placeName} 
+        {place.kapak_foto_url || place.image_url || place.fotograf || place.gorsel ? (
+          <img
+            src={place.kapak_foto_url || place.image_url || place.fotograf || place.gorsel}
+            alt={placeName}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
         ) : (
@@ -35,25 +35,26 @@ const PlaceCard = ({ place }) => {
       </div>
 
       {/* Mekan Bilgileri */}
-      <div className="flex flex-col justify-center flex-grow">
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <span 
-            className="text-ui-xs font-ui px-2 py-0.5 rounded-badge uppercase tracking-wider text-white"
+      <div className="flex flex-col justify-center flex-grow min-w-0">
+        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+          <span
+            className="text-ui-xs font-ui px-2 py-0.5 rounded-badge uppercase tracking-wider text-white whitespace-nowrap inline-block"
             style={{ backgroundColor: categoryConfig.color }}
           >
             {categoryConfig.label}
           </span>
-          {place.is_unesco && (
-            <span className="text-ui-xs font-ui bg-turquoise/10 text-turquoise px-2 py-0.5 rounded-badge">
+          {(place.unesco || place.is_unesco) && (
+            <span className="text-ui-xs font-ui bg-turquoise/10 text-turquoise px-2 py-0.5 rounded-badge whitespace-nowrap">
               UNESCO
             </span>
           )}
         </div>
-        <h3 className="font-display text-lg text-obsidian leading-tight mb-1 group-hover:text-sienna transition-colors">
+        <h3 className="font-display text-base text-obsidian leading-tight mb-1 group-hover:text-sienna transition-colors line-clamp-2 break-words">
           {placeName}
         </h3>
-        <p className="font-ui text-sm text-stone-500 flex items-center gap-1">
-          <MapPin className="w-3.5 h-3.5" /> {city}
+        <p className="font-ui text-xs text-stone-500 flex items-center gap-1 truncate">
+          <MapPin className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">{city}</span>
         </p>
       </div>
     </div>

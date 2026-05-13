@@ -9,14 +9,32 @@ import PlaceCard from '../../components/place/PlaceCard';
 import { getCategoryConfig } from '../../constants/categories';
 import { Link } from 'react-router-dom';
 
-const center = [39.0, 35.0];
+// PRD §2 D1 — pilot şehir İzmir. Harita merkezi + sıkı bbox burada belirlenir.
+const IZMIR_CENTER = [38.42, 27.14];
+const IZMIR_BOUNDS = L.latLngBounds(L.latLng(37.78, 26.10), L.latLng(39.18, 28.42));
+const IZMIR_BBOX_PARAM = '26.10,37.78,28.42,39.18';
 
 const CATEGORIES = [
   { id: 'all', label: 'Tümü' },
   { id: 'museum', label: 'Müze' },
   { id: 'archaeological_site', label: 'Arkeolojik Alan' },
+  { id: 'ancient_city', label: 'Antik Kent' },
   { id: 'mosque', label: 'Cami' },
-  { id: 'palace', label: 'Saray' }
+  { id: 'church', label: 'Kilise' },
+  { id: 'synagogue', label: 'Sinagog' },
+  { id: 'palace', label: 'Saray' },
+  { id: 'castle', label: 'Kale' },
+  { id: 'tower', label: 'Kule' },
+  { id: 'monument', label: 'Anıt' },
+  { id: 'fountain', label: 'Çeşme' },
+  { id: 'aqueduct', label: 'Su Kemeri' },
+  { id: 'bath', label: 'Hamam' },
+  { id: 'caravanserai', label: 'Kervansaray' },
+  { id: 'theatre', label: 'Tiyatro' },
+  { id: 'agora', label: 'Agora' },
+  { id: 'library', label: 'Kütüphane' },
+  { id: 'ruins', label: 'Ören Yeri' },
+  { id: 'historic_site', label: 'Tarihi Alan' },
 ];
 
 const createCustomIcon = (rawCategory) => {
@@ -36,8 +54,14 @@ const createCustomIcon = (rawCategory) => {
     `,
     iconSize: [24, 24],
     iconAnchor: [12, 24],
-    popupAnchor: [0, -24]
+    popupAnchor: [0, -24],
   });
+};
+
+const resolvePlaceName = (place) => {
+  if (!place) return 'İsimsiz Mekan';
+  if (typeof place.isim === 'object') return place.isim?.tr || place.isim?.en || 'İsimsiz Mekan';
+  return place.isim || place.name || 'İsimsiz Mekan';
 };
 
 const ExplorePage = () => {
@@ -48,11 +72,16 @@ const ExplorePage = () => {
 
   const { data: response, isLoading, isError } = useQuery({
     queryKey: ['places', { category: selectedCategory, unesco: isUnescoOnly, q: searchQuery }],
-    queryFn: () => placeService.list({
-      category: selectedCategory === 'all' ? undefined : selectedCategory,
-      unesco: isUnescoOnly ? true : undefined,
-      q: searchQuery || undefined
-    })
+    queryFn: () =>
+      placeService.list({
+        // "Tümü" filtresi: backend max limit (500) ile mekanları getir;
+        // her kategori değişiminde aynı limit kullanılır.
+        limit: 500,
+        bbox: IZMIR_BBOX_PARAM,
+        category: selectedCategory === 'all' ? undefined : selectedCategory,
+        unesco: isUnescoOnly ? true : undefined,
+        q: searchQuery || undefined,
+      }),
   });
 
   let extractedPlaces = [];
@@ -70,19 +99,23 @@ const ExplorePage = () => {
 
   return (
     <div className="flex h-[calc(100vh-5rem)] relative overflow-hidden bg-stone-100">
-      
-      <div 
+      <div
         className={`bg-cream border-r border-stone-200 flex flex-col shadow-map-control z-20 transition-all duration-300 ease-in-out shrink-0 w-[380px] ${
           isPanelOpen ? 'ml-0' : '-ml-[380px]'
         }`}
       >
         <div className="p-6 border-b border-stone-200">
-          <h2 className="font-display text-display-lg text-sienna mb-6">Keşfet</h2>
-          
+          <div className="flex items-baseline justify-between mb-4">
+            <h2 className="font-display text-display-lg text-sienna">Keşfet</h2>
+            <span className="font-ui text-xs text-stone-500">
+              {isLoading ? '...' : `${safePlaces.length} mekan`}
+            </span>
+          </div>
+
           <div className="relative mb-4">
-            <input 
-              type="text" 
-              placeholder="Mekan veya rota ara..." 
+            <input
+              type="text"
+              placeholder="Mekan veya rota ara..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-white border border-stone-200 py-3 pl-10 pr-4 rounded-card focus:outline-none focus:ring-2 focus:ring-amber/20 focus:border-amber transition-all font-ui text-ui-sm"
@@ -91,13 +124,13 @@ const ExplorePage = () => {
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide mb-4">
-            {CATEGORIES.map(cat => (
+            {CATEGORIES.map((cat) => (
               <button
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
                 className={`whitespace-nowrap px-4 py-1.5 rounded-badge font-ui text-sm transition-all border ${
-                  selectedCategory === cat.id 
-                    ? 'bg-sienna text-white border-sienna shadow-card' 
+                  selectedCategory === cat.id
+                    ? 'bg-sienna text-white border-sienna shadow-card'
                     : 'bg-white text-stone-600 border-stone-200 hover:border-amber'
                 }`}
               >
@@ -107,8 +140,8 @@ const ExplorePage = () => {
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer w-max">
-            <input 
-              type="checkbox" 
+            <input
+              type="checkbox"
               checked={isUnescoOnly}
               onChange={(e) => setIsUnescoOnly(e.target.checked)}
               className="w-4 h-4 text-turquoise border-stone-300 rounded focus:ring-turquoise"
@@ -123,7 +156,7 @@ const ExplorePage = () => {
               <Loader2 className="w-8 h-8 animate-spin" />
             </div>
           )}
-          
+
           {isError && (
             <p className="text-rose-rug font-ui text-sm text-center mt-4">
               Mekanlar yüklenirken bir hata oluştu.
@@ -132,22 +165,20 @@ const ExplorePage = () => {
 
           {!isLoading && !isError && safePlaces.length === 0 && (
             <p className="text-stone-500 font-ui text-sm text-center mt-4">
-              Henüz bir mekan bulunmuyor.
+              Bu filtrelerle eşleşen mekan bulunamadı.
             </p>
           )}
 
-          {/* SORUNLU KISIM BURASIYDI, DÜZELTİLDİ */}
-          {!isLoading && safePlaces.map((place, index) => (
-            <div key={`card-wrapper-${place?.id || index}`} className="relative mb-4 group">
-              <PlaceCard place={place || {}} />
-              <Link 
+          {!isLoading &&
+            safePlaces.map((place, index) => (
+              <Link
+                key={`card-wrapper-${place?.id || index}`}
                 to={`/mekanlar/${place.id}`}
-                className="absolute bottom-4 right-4 bg-sienna text-white px-4 py-1.5 rounded-badge text-xs font-ui font-semibold shadow-card hover:bg-amber transition-colors z-10 border border-white"
+                className="block mb-4 focus:outline-none focus:ring-2 focus:ring-amber/30 rounded-card"
               >
-                Detay & Yorum
+                <PlaceCard place={place || {}} />
               </Link>
-            </div>
-          ))}
+            ))}
         </div>
       </div>
 
@@ -161,42 +192,64 @@ const ExplorePage = () => {
       </button>
 
       <div className="flex-grow relative z-0 w-full h-full">
-        <MapContainer center={center} zoom={6} className="w-full h-full" zoomControl={false}>
+        <MapContainer
+          center={IZMIR_CENTER}
+          zoom={9}
+          minZoom={8}
+          maxZoom={18}
+          maxBounds={IZMIR_BOUNDS}
+          maxBoundsViscosity={0.8}
+          className="w-full h-full"
+          zoomControl={false}
+        >
           <TileLayer
             attribution='&copy; OpenStreetMap contributors'
             url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
           />
-          
-          {!isLoading && safePlaces.map((place, index) => {
-            if (!place) return null;
-            
-            let lat, lng;
-            if (place.koordinat) {
-               lat = place.koordinat.enlem || place.koordinat.lat || place.koordinat.latitude;
-               lng = place.koordinat.boylam || place.koordinat.lng || place.koordinat.longitude;
-            } else {
-               lat = place.lat || place.latitude || place.enlem;
-               lng = place.lng || place.longitude || place.boylam;
-            }
-            
-            if (!lat || !lng) return null;
 
-            const placeName = typeof place.isim === 'object' ? (place.isim?.tr || place.isim?.en) : (place.isim || place.name);
-            const rawCategory = Array.isArray(place.kategori) && place.kategori.length > 0 ? place.kategori[0] : (place.kategori || place.category);
+          {!isLoading &&
+            safePlaces.map((place, index) => {
+              if (!place) return null;
 
-            return (
-              <Marker 
-                key={`marker-${place.id || index}`} 
-                position={[lat, lng]}
-                icon={createCustomIcon(rawCategory)}
-              >
-                <Popup className="font-ui">
-                  <span className="font-semibold text-sienna">{placeName || 'İsimsiz Mekan'}</span><br />
-                  {place.sehir || place.il || place.city || ''}
-                </Popup>
-              </Marker>
-            );
-          })}
+              let lat;
+              let lng;
+              if (place.koordinat) {
+                lat = place.koordinat.enlem || place.koordinat.lat || place.koordinat.latitude;
+                lng = place.koordinat.boylam || place.koordinat.lng || place.koordinat.longitude;
+              } else {
+                lat = place.lat || place.latitude || place.enlem;
+                lng = place.lng || place.longitude || place.boylam;
+              }
+
+              if (!lat || !lng) return null;
+
+              const placeName = resolvePlaceName(place);
+              const rawCategory =
+                Array.isArray(place.kategori) && place.kategori.length > 0
+                  ? place.kategori[0]
+                  : place.kategori || place.category;
+
+              return (
+                <Marker
+                  key={`marker-${place.id || index}`}
+                  position={[lat, lng]}
+                  icon={createCustomIcon(rawCategory)}
+                >
+                  <Popup className="font-ui">
+                    <span className="font-semibold text-sienna">{placeName}</span>
+                    <br />
+                    {place.sehir || place.il || place.city || 'İzmir'}
+                    <br />
+                    <Link
+                      to={`/mekanlar/${place.id}`}
+                      className="text-amber font-semibold underline text-xs"
+                    >
+                      Detayları gör →
+                    </Link>
+                  </Popup>
+                </Marker>
+              );
+            })}
         </MapContainer>
       </div>
     </div>
