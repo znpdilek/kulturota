@@ -1,0 +1,60 @@
+# =============================================================================
+# KültürRota — Backend Bağımlılıkları (Python 3.12)
+# PRD v2.0 · Bölüm 16: Teknoloji Yığını
+# =============================================================================
+
+# --- Web Framework -----------------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# --- ORM & Migrations --------------------------------------------------------
+SQLAlchemy==2.0.36
+alembic==1.14.0
+
+# --- PostgreSQL Sürücüleri ---------------------------------------------------
+psycopg2-binary==2.9.10
+# Async sürücü (FastAPI async endpoint'leri için, Adım 2+ kullanım)
+asyncpg==0.30.0
+
+# --- PostGIS / Geospatial ----------------------------------------------------
+GeoAlchemy2==0.16.0
+Shapely==2.0.6
+
+# --- Validation & Settings ---------------------------------------------------
+pydantic==2.10.4
+pydantic-settings==2.7.1
+email-validator==2.2.0
+
+# --- Auth & Security (Adım 2+ için hazır) ------------------------------------
+passlib[argon2]==1.7.4
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.20
+
+# --- Cache & Queue -----------------------------------------------------------
+redis==5.2.1
+
+# --- Util --------------------------------------------------------------------
+python-dotenv==1.0.1
+python-slugify==8.0.4
+httpx==0.28.1
+
+# --- ETL — Dedup & Skor (PRD §8.5) -------------------------------------------
+# Token-set ratio için (saf-Python fallback'i var, fakat performans gerekli):
+rapidfuzz==3.10.1
+
+# --- Otonom AI Karar Katmanı (PRD §9 — Adım 3) -------------------------------
+# Gemini Flash (Google AI Studio) free-tier REST entegrasyonu doğrudan
+# `httpx` üzerinden yapılır → ek SDK bağımlılığı YOK (mentor direktifi: maliyet=0).
+# REST endpoint: https://generativelanguage.googleapis.com/v1beta/models/...
+# API anahtarı: .env içinde GEMINI_API_KEY (https://aistudio.google.com/app/apikey).
+
+# --- Medya & Storage (PRD §13 + §17.4 — Adım 6) ------------------------------
+# AWS S3 (prod) / MinIO (lokal) için resmi sürücü. Path-style URL desteği MinIO
+# uyumluluğu için gereklidir.
+boto3==1.35.92
+# Görsel doğrulama, EXIF temizleme/çıkarma, thumbnail üretimi (PRD F3).
+Pillow==11.1.0
+
+# --- Test & Dev (opsiyonel) --------------------------------------------------
+pytest==8.3.4
+pytest-asyncio==0.25.0

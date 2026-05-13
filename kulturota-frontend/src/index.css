@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+/* Temamızı doğrudan CSS içinde v4 standartlarında tanımlıyoruz */
+@theme {
+  --color-obsidian: #1A1614;
+  --color-sienna: #A0522D;
+  --color-amber: #D4883A;
+  --color-sand: #F2E8D9;
+  --color-cream: #FAF7F2;
+  --color-turquoise: #2A9D8F;
+  --color-indigo-tile: #264653;
+  --color-rose-rug: #E76F51;
+
+  --font-display: "Playfair Display", serif;
+  --font-body: "Lora", serif;
+  --font-ui: "DM Sans", sans-serif;
+
+  --radius-organic: 2rem 0.5rem 2rem 0.5rem;
+  
+  --shadow-card: 0 2px 8px rgba(160, 82, 45, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-card-hover: 0 8px 24px rgba(160, 82, 45, 0.15), 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* Fontları ve temel stilleri ekleyelim */
+@layer base {
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Lora:wght@400;500&family=Playfair+Display:wght@700;900&display=swap');
+
+  body {
+    /* bg-cream artık @theme içinde tanımlandığı için hata vermeyecek */
+    @apply bg-cream text-obsidian font-body antialiased;
+  }
+}
