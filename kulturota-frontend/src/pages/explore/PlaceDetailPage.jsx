@@ -53,6 +53,13 @@ const PlaceDetailPage = () => {
     queryFn: () => placeService.getPhotos(id),
   });
 
+  const reviewMutation = useMutation({
+  mutationFn: (payload) => placeService.addReview(id, payload),
+  });
+  const photoMutation = useMutation({
+  mutationFn: (formData) => placeService.uploadPhoto(formData),
+  });
+
   if (isPlaceLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -111,13 +118,6 @@ const PlaceDetailPage = () => {
     setPhotoFile(null);
     setPhotoPreview(null);
   };
-
-  const reviewMutation = useMutation({
-    mutationFn: (payload) => placeService.addReview(id, payload),
-  });
-  const photoMutation = useMutation({
-    mutationFn: (formData) => placeService.uploadPhoto(formData),
-  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
