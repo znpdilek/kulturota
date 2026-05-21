@@ -43,7 +43,9 @@ def create_app() -> FastAPI:
             "http://localhost:5173", 
             "http://localhost:5174", 
             "http://127.0.0.1:5174",
-            "http://localhost:3000"
+            "http://localhost:3000",
+            "https://kulturota-a25p5kjqm-znpdileks-projects.vercel.app"
+            "https://kulturota.vercel.app"
         ],
         allow_credentials=True,
         allow_methods=["*"], # Tüm metodlara izin ver
