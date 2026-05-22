@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, computed_field
+from pydantic import Field, PostgresDsn, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -82,23 +82,49 @@ class Settings(BaseSettings):
 
     # --- CORS ---------------------------------------------------------------
     # Geliştirme: Vite dev server (5173) + lokal preview (4173).
-
-    CORS_ORIGINS: list[str] = [
-        "http://localhost:5173",
-        "https://kulturrota-a25p5kjqm-znpdileks-projects.vercel.app",
-        "https://kulturrota-brown.vercel.app"
-    ]
-   
-    #CORS_ORIGINS: list[str] = ["*"] 
-    """(
+    # Üretim: Vercel production domain(ler)i. Render üzerinde ortam değişkeni
+    # olarak virgülle ayrılmış string biçiminde de verilebilir:
+    #   CORS_ORIGINS="https://kulturrota-brown.vercel.app,https://kulturrota.vercel.app"
+    CORS_ORIGINS: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5174",
             "http://localhost:4173",
             "http://localhost:3000",
+            "https://kulturrota-brown.vercel.app",
             "https://kulturrota-a25p5kjqm-znpdileks-projects.vercel.app",
-            
         ]
-    )"""
+    )
+
+    # Vercel her PR/branch için yeni bir preview URL üretir
+    # (ör. kulturrota-brown-git-feature-foo.vercel.app). Tek tek listeye
+    # eklemek yerine regex ile proje preview URL'lerini kabul ederiz.
+    CORS_ORIGIN_REGEX: str | None = Field(
+        default=r"^https://kulturrota(-[a-z0-9-]+)*\.vercel\.app$",
+        description=(
+            "Origin için regex deseni. Vercel preview URL'lerini otomatik "
+            "kabul etmek için kullanılır."
+        ),
+    )
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def _split_cors_origins(cls, v: object) -> object:
+        """Ortam değişkeninden gelen virgülle ayrılmış string'i listeye çevir.
+
+        Render gibi PaaS'larda env değişkenleri sadece string olarak verildiği
+        için ``"https://a.com,https://b.com"`` formatı da desteklenir. JSON
+        array (``["..."]``) yine çalışır.
+        """
+        if isinstance(v, str):
+            stripped = v.strip()
+            if not stripped:
+                return []
+            if stripped.startswith("["):
+                return v
+            return [item.strip() for item in stripped.split(",") if item.strip()]
+        return v
 
     # --- Otonom AI Karar Katmanı (PRD §9) ------------------------------------
     # Birincil sağlayıcı: Google AI Studio — Gemini Flash (PRD §9.2).
