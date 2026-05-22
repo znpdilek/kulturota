@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     # Geliştirme: Vite dev server (5173) + lokal preview (4173).
     # Üretim: Vercel production domain(ler)i. Render üzerinde ortam değişkeni
     # olarak virgülle ayrılmış string biçiminde de verilebilir:
-    #   CORS_ORIGINS="https://kulturrota-brown.vercel.app,https://kulturrota.vercel.app"
+    #   CORS_ORIGINS="https://kulturota-brown.vercel.app,https://kulturrota-brown.vercel.app"
     CORS_ORIGINS: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",
@@ -92,16 +92,22 @@ class Settings(BaseSettings):
             "http://127.0.0.1:5174",
             "http://localhost:4173",
             "http://localhost:3000",
+            # Üretim — Vercel domain'i (DİKKAT: gerçek alan adı tek 'r' ile
+            # "kulturota-brown". Çift 'r' yazılı varyant da geriye dönük
+            # uyumluluk için tutulur.)
+            "https://kulturota-brown.vercel.app",
             "https://kulturrota-brown.vercel.app",
+            "https://kulturota-a25p5kjqm-znpdileks-projects.vercel.app",
             "https://kulturrota-a25p5kjqm-znpdileks-projects.vercel.app",
         ]
     )
 
     # Vercel her PR/branch için yeni bir preview URL üretir
-    # (ör. kulturrota-brown-git-feature-foo.vercel.app). Tek tek listeye
+    # (ör. kulturota-brown-git-feature-foo.vercel.app). Tek tek listeye
     # eklemek yerine regex ile proje preview URL'lerini kabul ederiz.
+    # Hem 'kulturota' (tek r) hem 'kulturrota' (çift r) yazımını eşler.
     CORS_ORIGIN_REGEX: str | None = Field(
-        default=r"^https://kulturrota(-[a-z0-9-]+)*\.vercel\.app$",
+        default=r"^https://kulturr?ota(-[a-z0-9-]+)*\.vercel\.app$",
         description=(
             "Origin için regex deseni. Vercel preview URL'lerini otomatik "
             "kabul etmek için kullanılır."
