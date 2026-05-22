@@ -82,7 +82,9 @@ class Settings(BaseSettings):
 
     # --- CORS ---------------------------------------------------------------
     # Geliştirme: Vite dev server (5173) + lokal preview (4173).
-    CORS_ORIGINS: list[str] = ["*"](
+    CORS_ORIGINS: list[str] = ["*"]
+    
+    """(
         default_factory=lambda: [
             "http://localhost:5173",
             "http://localhost:4173",
@@ -90,7 +92,7 @@ class Settings(BaseSettings):
             "https://kulturrota-a25p5kjqm-znpdileks-projects.vercel.app",
             
         ]
-    )
+    )"""
 
     # --- Otonom AI Karar Katmanı (PRD §9) ------------------------------------
     # Birincil sağlayıcı: Google AI Studio — Gemini Flash (PRD §9.2).
