@@ -8,10 +8,10 @@ PRD Bölüm 7 & 16'ya göre PostgreSQL + PostGIS + Redis bağlantıları yöneti
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, PostgresDsn, computed_field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -85,7 +85,10 @@ class Settings(BaseSettings):
     # Üretim: Vercel production domain(ler)i. Render üzerinde ortam değişkeni
     # olarak virgülle ayrılmış string biçiminde de verilebilir:
     #   CORS_ORIGINS="https://kulturota-brown.vercel.app,https://kulturrota-brown.vercel.app"
-    CORS_ORIGINS: list[str] = Field(
+    # ``NoDecode`` ile pydantic-settings'in env değerini JSON olarak parse etme
+    # adımı atlanır; bu sayede aşağıdaki ``field_validator`` ham string'i
+    # alıp virgüle göre ayrıştırabilir.
+    CORS_ORIGINS: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
             "http://localhost:5173",
             "http://localhost:5174",
