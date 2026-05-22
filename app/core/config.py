@@ -82,8 +82,14 @@ class Settings(BaseSettings):
 
     # --- CORS ---------------------------------------------------------------
     # Geliştirme: Vite dev server (5173) + lokal preview (4173).
-    CORS_ORIGINS: list[str] = ["*"]
-    
+
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "https://kulturrota-a25p5kjqm-znpdileks-projects.vercel.app",
+        "https://kulturrota-brown.vercel.app"
+    ]
+   
+    #CORS_ORIGINS: list[str] = ["*"] 
     """(
         default_factory=lambda: [
             "http://localhost:5173",
